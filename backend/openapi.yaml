@@ -1,0 +1,223 @@
+# I had to really research what this is I'm not sure why this is needed but it was a requirement so here it is.
+
+openapi: 3.0.3
+info:
+  title: NASA Near-Earth Objects Explorer API
+  description: API for fetching and browsing NASA's Near-Earth Object (NEO) data.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - message
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: Server is running!
+
+  /api:
+    get:
+      summary: Fetch near-Earth objects for a date range
+      operationId: getNeos
+      parameters:
+        - name: START_DATE
+          in: query
+          required: true
+          description: Start date in YYYY/MM/DD format
+          schema:
+            type: string
+            pattern: '^\d{4}/\d{2}/\d{2}$'
+            example: "2025/01/01"
+        - name: END_DATE
+          in: query
+          required: true
+          description: End date in YYYY/MM/DD format
+          schema:
+            type: string
+            pattern: '^\d{4}/\d{2}/\d{2}$'
+            example: "2025/01/07"
+        - name: sort
+          in: query
+          required: false
+          description: Sort order for the results
+          schema:
+            type: string
+            enum:
+              - size
+              - closeness
+              - velocity
+      responses:
+        "200":
+          description: List of near-Earth objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CelestialBody"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingDates:
+                  summary: Missing required dates
+                  value:
+                    error: START_DATE and END_DATE are required
+                invalidFormat:
+                  summary: Invalid date format
+                  value:
+                    error: Dates must be in YYYY/MM/DD format
+                invalidSort:
+                  summary: Invalid sort value
+                  value:
+                    error: "sort must be one of: size, closeness, velocity"
+        "500":
+          description: Server configuration error or NASA API failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingApiKey:
+                  summary: NASA API key not configured
+                  value:
+                    error: NASA_API_KEY is not configured
+                nasaFailure:
+                  summary: NASA API request failed
+                  value:
+                    error: Failed to fetch data from NASA API
+                    details: {}
+
+components:
+  schemas:
+    CelestialBody:
+      type: object
+      required:
+        - name
+        - estimated_diameter
+        - close_approach_data
+      properties:
+        name:
+          type: string
+          example: "(2024 AB1)"
+        name_limited:
+          type: string
+          nullable: true
+          example: "2024 AB1"
+        estimated_diameter:
+          $ref: "#/components/schemas/EstimatedDiameter"
+        close_approach_data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CloseApproach"
+
+    EstimatedDiameter:
+      type: object
+      required:
+        - kilometers
+        - meters
+        - miles
+        - feet
+      properties:
+        kilometers:
+          $ref: "#/components/schemas/DiameterRange"
+        meters:
+          $ref: "#/components/schemas/DiameterRange"
+        miles:
+          $ref: "#/components/schemas/DiameterRange"
+        feet:
+          $ref: "#/components/schemas/DiameterRange"
+
+    DiameterRange:
+      type: object
+      required:
+        - estimated_diameter_min
+        - estimated_diameter_max
+      properties:
+        estimated_diameter_min:
+          type: number
+          format: double
+          example: 0.0127219879
+        estimated_diameter_max:
+          type: number
+          format: double
+          example: 0.0284472297
+
+    CloseApproach:
+      type: object
+      required:
+        - close_approach_date
+        - relative_velocity
+        - miss_distance
+      properties:
+        close_approach_date:
+          type: string
+          example: "2025-01-03"
+        relative_velocity:
+          type: object
+          required:
+            - kilometers_per_second
+            - kilometers_per_hour
+            - miles_per_hour
+          properties:
+            kilometers_per_second:
+              type: string
+              example: "12.345"
+            kilometers_per_hour:
+              type: string
+              example: "44442.0"
+            miles_per_hour:
+              type: string
+              example: "27612.5"
+        miss_distance:
+          type: object
+          required:
+            - astronomical
+            - lunar
+            - kilometers
+            - miles
+          properties:
+            astronomical:
+              type: string
+              example: "0.1234567890"
+            lunar:
+              type: string
+              example: "48.0246914"
+            kilometers:
+              type: string
+              example: "18471234.567"
+            miles:
+              type: string
+              example: "11475678.901"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        details:
+          type: object
+          nullable: true
