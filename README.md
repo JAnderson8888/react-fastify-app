@@ -1,81 +1,90 @@
-# React + TypeScript + Fastify Application
+# NASA Near-Earth Objects Explorer
 
-A full-stack application with React + TypeScript frontend (using Vite) and Fastify backend.
+A full-stack application for browsing NASA's list of objects that have come close to earth.
 
 ## Project Structure
 
 ```
 react-fastify-app/
-├── frontend/          # React + TypeScript frontend
+├── backend/
 │   ├── src/
+│   │   └── server.ts          # Fastify server with NASA API integration
+│   ├── .env                   # NASA API key
 │   ├── package.json
-│   └── vite.config.ts
-└── backend/           # Fastify backend
+│   └── tsconfig.json
+└── frontend/
     ├── src/
-    │   └── server.ts
-    ├── package.json
-    └── tsconfig.json
+    │   ├── main.tsx            # App entry point
+    │   ├── App.tsx             # Root component with routing
+    │   ├── pages/
+    │   │   ├── Home.tsx        # Date selection page
+    │   │   └── List.tsx        # NEO list and details view
+    │   ├── components/
+    │   │   └── inputs/
+    │   │       └── datepicker.tsx
+    │   ├── interfaces/
+    │   │   └── interfaces.tsx  # TypeScript type definitions
+    │   └── utils/
+    │       └── helpers.ts      # Utility functions
+    ├── index.html
+    ├── vite.config.ts
+    ├── eslint.config.js
+    └── package.json
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v18 or higher recommended)
+- Node.js (v18 or higher recommended preferably 22)
 - npm
+- A NASA API key (stored in `backend/.env` as `NASA_API_KEY`)
 
 ### Installation
 
-1. Install frontend dependencies:
+1. Install backend dependencies:
+```bash
+cd backend
+npm install
+```
+
+2. Install frontend dependencies:
 ```bash
 cd frontend
 npm install
 ```
 
-2. Install backend dependencies:
-```bash
-cd ../backend
-npm install
-```
-
 ### Running the Application
 
-1. Start the backend server (in the backend directory):
+1. Start the backend server:
 ```bash
+cd backend
 npm run dev
 ```
-The backend will run on `http://localhost:3000`
+The backend will run on `http://localhost:3000`.
 
-2. Start the frontend dev server (in the frontend directory):
+2. Start the frontend dev server:
 ```bash
+cd frontend
 npm run dev
 ```
-The frontend will run on `http://localhost:5173`
+The frontend will run on `http://localhost:5173`.
 
 ## Backend API Endpoints
 
-The backend includes the following example endpoints:
+- `GET /api/health` - Health check
+- `GET /api?START_DATE=YYYY/MM/DD&END_DATE=YYYY/MM/DD&sort=size|closeness|velocity` - Fetch near-Earth objects for a date range, optionally sorted
 
-- `GET /api/health` - Health check endpoint
-- `GET /api/hello` - Returns a hello message
-- `POST /api/greet` - Accepts a JSON body with `name` and returns a personalized greeting
+## Frontend Pages
 
-Example POST request:
-```bash
-curl -X POST http://localhost:3000/api/greet \
-  -H "Content-Type: application/json" \
-  -d '{"name": "John"}'
-```
+- **Home** (`/`) - Select a start date to search for NEOs within a 7-day window
+- **List** (`/list`) - Browse the results with sorting (size, closeness, velocity) and view details for each object including estimated diameter and close approach data
 
-## Frontend Configuration
+## Tech Stack
 
-The frontend is configured to proxy API requests to the backend through Vite's proxy configuration. All requests to `/api/*` will be forwarded to `http://localhost:3000`.
-
-## Development
-
-- Frontend uses Vite for fast HMR (Hot Module Replacement)
-- Backend uses `tsx` with watch mode for automatic reloading
-- CORS is configured to allow the frontend to communicate with the backend
+- **Frontend**: React 19, TypeScript, Vite, React Router, React Bootstrap, react-datepicker
+- **Backend**: Fastify, TypeScript, NASA API
+- **Dev Tools**: ESLint, Prettier, tsx (watch mode)
 
 ## Building for Production
 
@@ -91,4 +100,4 @@ npm start
 cd frontend
 npm run build
 ```
-The built files will be in the `dist` directory.
+The built files will be in the `frontend/dist` directory.
