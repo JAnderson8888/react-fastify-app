@@ -22,7 +22,7 @@ function Home() {
 
   //Made this simple because I did not want to waste time and didn't have a plan. Just simple instructions.
   return (
-    <Container>
+    <Container className="mx-auto mt-5">
       {/* title */}
       <h1 className="p-2 my-3">Close Encounters</h1>
       {/* subtitle */}

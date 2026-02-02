@@ -1,5 +1,3 @@
-# I had to really research what this is I'm not sure why this is needed but it was a requirement so here it is.
-
 openapi: 3.0.3
 info:
   title: NASA Near-Earth Objects Explorer API
