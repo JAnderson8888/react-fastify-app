@@ -3,6 +3,7 @@ loadEnvFile();
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import type { SanitizeCelestialObject, CacheEntry } from './interfaces/interfaces.js';
 
 const fastify = Fastify({
   logger: true
@@ -12,6 +13,19 @@ const fastify = Fastify({
 await fastify.register(cors, {
   origin: 'http://localhost:5173' // Vite's default port
 });
+
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const APICache = new Map<string, CacheEntry>();
+
+function getCachedData(key: string): CacheEntry['data'] | null {
+  const entry = APICache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    APICache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
 
 // Health check endpoint
 fastify.get('/api/health', async (request, reply) => {
@@ -43,91 +57,106 @@ fastify.get<{
   const startDate = START_DATE.replaceAll('/', '-');
   const endDate = END_DATE.replaceAll('/', '-');
 
-  //api key taken form env file
-  const apiKey = process.env.NASA_API_KEY;
-  if (!apiKey) {
-    return reply.status(500).send({ error: 'NASA_API_KEY is not configured' });
+  // Check cache before hitting NASA API
+  const cacheKey = `${startDate}|${endDate}`;
+  let sanitized: SanitizeCelestialObject[] | null = getCachedData(cacheKey);
+
+  if (!sanitized) {
+    //api key taken form env file
+    const apiKey = process.env.NASA_API_KEY;
+    if (!apiKey) {
+      return reply.status(500).send({ error: 'NASA_API_KEY is not configured' });
+    }
+
+    //API call
+    const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${startDate}&end_date=${endDate}&api_key=${apiKey}`;
+    const response = await fetch(url);
+
+    //if there is an error handle it
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null);
+      return reply.status(response.status).send({
+        error: 'Failed to fetch data from NASA API',
+        details: errorBody,
+      });
+    }
+
+    //set up the data just for the information that is needed
+    const data = await response.json() as {
+      near_earth_objects: Record<string, Array<{
+        name: string;
+        name_limited?: string;
+        estimated_diameter: {
+          kilometers: { estimated_diameter_min: number; estimated_diameter_max: number };
+          meters: { estimated_diameter_min: number; estimated_diameter_max: number };
+          miles: { estimated_diameter_min: number; estimated_diameter_max: number };
+          feet: { estimated_diameter_min: number; estimated_diameter_max: number };
+        };
+        close_approach_data: Array<{
+          close_approach_date: string;
+          relative_velocity: {
+            kilometers_per_second: string;
+            kilometers_per_hour: string;
+            miles_per_hour: string;
+          };
+          miss_distance: {
+            astronomical: string;
+            lunar: string;
+            kilometers: string;
+            miles: string;
+          };
+        }>;
+      }>>;
+    };
+
+    const allNeos = Object.values(data.near_earth_objects).flat();
+
+    const filtered = allNeos.filter((neo) =>
+      neo.close_approach_data.some((approach) => {
+        const approachDate = approach.close_approach_date;
+        return approachDate >= startDate && approachDate <= endDate;
+      })
+    );
+
+    sanitized = filtered.map((neo) => ({
+      name: neo.name,
+      name_limited: neo.name_limited,
+      estimated_diameter: neo.estimated_diameter,
+      close_approach_data: neo.close_approach_data,
+    }));
+
+    // Store in cache
+    APICache.set(cacheKey, { data: sanitized, timestamp: Date.now() });
+    fastify.log.info({ cacheKey }, 'Cached NASA NEO data');
+  } else {
+    fastify.log.info({ cacheKey }, 'Serving NASA NEO data from cache');
   }
 
-  //API call
-  const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${startDate}&end_date=${endDate}&api_key=${apiKey}`;
-  const response = await fetch(url);
+  // Sort a copy so the cached array is not mutated
+  const result = [...sanitized];
 
-  //if there is an error handle it
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    return reply.status(response.status).send({
-      error: 'Failed to fetch data from NASA API',
-      details: errorBody,
-    });
-  }
-
-  //set up the data just for the information that is needed
-  const data = await response.json() as {
-    near_earth_objects: Record<string, Array<{
-      name: string;
-      name_limited?: string;
-      estimated_diameter: {
-        kilometers: { estimated_diameter_min: number; estimated_diameter_max: number };
-        meters: { estimated_diameter_min: number; estimated_diameter_max: number };
-        miles: { estimated_diameter_min: number; estimated_diameter_max: number };
-        feet: { estimated_diameter_min: number; estimated_diameter_max: number };
-      };
-      close_approach_data: Array<{
-        close_approach_date: string;
-        relative_velocity: {
-          kilometers_per_second: string;
-          kilometers_per_hour: string;
-          miles_per_hour: string;
-        };
-        miss_distance: {
-          astronomical: string;
-          lunar: string;
-          kilometers: string;
-          miles: string;
-        };
-      }>;
-    }>>;
-  };
-
-  const allNeos = Object.values(data.near_earth_objects).flat();
-
-  const filtered = allNeos.filter((neo) =>
-    neo.close_approach_data.some((approach) => {
-      const approachDate = approach.close_approach_date;
-      return approachDate >= startDate && approachDate <= endDate;
-    })
-  );
-
-  const sanitized = filtered.map((neo) => ({
-    name: neo.name,
-    name_limited: neo.name_limited,
-    estimated_diameter: neo.estimated_diameter,
-    close_approach_data: neo.close_approach_data,
-  }));
-
-  // Sort if requested
   if (normalizedSort === 'size') {
-    sanitized.sort(
+    result.sort(
       (a, b) =>
         a.estimated_diameter.kilometers.estimated_diameter_max -
         b.estimated_diameter.kilometers.estimated_diameter_max
     );
   } else if (normalizedSort === 'closeness') {
-    sanitized.sort(
+    result.sort(
       (a, b) =>
         parseFloat(a.close_approach_data[0]?.miss_distance.kilometers ?? '0') -
         parseFloat(b.close_approach_data[0]?.miss_distance.kilometers ?? '0')
     );
   } else if (normalizedSort === 'velocity') {
-    sanitized.sort(
+    result.sort(
       (a, b) =>
         parseFloat(a.close_approach_data[0]?.relative_velocity.kilometers_per_second ?? '0') -
         parseFloat(b.close_approach_data[0]?.relative_velocity.kilometers_per_second ?? '0')
     );
   }
 
-  return sanitized;
+  reply.header('Cache-Control', 'public, max-age=3600');
+  return result;
 });
 
 const start = async () => {
